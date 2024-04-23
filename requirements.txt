@@ -1,0 +1,5 @@
+prompt-toolkit
+rainbow_tqdm
+requests
+aiohttp
+PyYAML

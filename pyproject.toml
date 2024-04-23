@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "getai"
+version = "0.0.3"
+description = "GetAI - An asynchronous AI search and download tool for AI models, datasets, and tools. Designed to streamline the process of downloading machine learning models, datasets, and more."
+authors = ["Ben Gorlick <ben@unifiedlearning.ai>"]
+license = "MIT - with attribution"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+aiohttp = "^3.9.3"
+aiofiles = "^23.2.1"
+prompt-toolkit = "^3.0.43"
+rainbow-tqdm = "^0.1.3"
+PyYAML = "^6.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+include = ["getai/getai_config.yaml"]
+
+[tool.poetry.scripts]
+getai = "getai.__main__:run"
+
