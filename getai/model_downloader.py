@@ -55,17 +55,8 @@ class AsyncSearch:
         while True:
             total_pages = (len(self.filtered_models) + self.page_size - 1) // self.page_size
             current_page = self.search_history[-1][1]
-            current_models = self.get_current_models(current_page)
-
-            # Fetch branch file sizes for the current page models
-            self.branch_sizes = await self.model_downloader.get_branch_file_sizes_for_models(current_models)
-
             while True:
-                self.display_current_page(current_page, total_pages)
-
-                # Prefetch branch sizes for the next pages
-                await self.prefetch_branch_sizes(current_page, total_pages)
-
+                await self.display_current_page(current_page, total_pages)
                 user_input = await self.get_user_input(current_page, total_pages)
 
                 if user_input.lower() == 'n' and current_page < total_pages:
@@ -90,26 +81,36 @@ class AsyncSearch:
                         print("You are already at the main search results.")
                 elif user_input.isdigit() and 1 <= int(user_input) <= len(self.get_current_models(current_page)):
                     selected_model = self.get_current_models(current_page)[int(user_input) - 1]
-                    await self.model_downloader.download_selected_model(selected_model['id'])
+                    branches = await self.model_downloader.get_model_branches(selected_model['id'])
+                    if len(branches) > 1:
+                        print(f"Multiple branches detected for model: {selected_model['id']}")
+                        selected_branch = await self.model_downloader.select_branch_interactive(branches)
+                        await self.model_downloader.download_model(selected_model['id'], selected_branch, False, False)
+                    else:
+                        await self.model_downloader.download_model(selected_model['id'], 'main', False, False)
                     break
                 else:
                     print("Invalid input. Please try again.")
 
             await self.handle_user_choice()
 
-    def display_current_page(self, current_page, total_pages):
+    async def display_current_page(self, current_page, total_pages):
         start_index = (current_page - 1) * self.page_size
         end_index = min(start_index + self.page_size, len(self.filtered_models))
         current_models = self.filtered_models[start_index:end_index]
         print(f"Search results for '{self.query}' (Page {current_page} of {total_pages}, Total: {self.total_models}):")
         for i, model in enumerate(current_models, start=1):
             model_id, model_name, author = model['id'], model.get('modelName', model['id']), model.get('author', 'N/A')
-            model_size = self.branch_sizes.get(model_id, {}).get('main', 'N/A')
-            if model_size != 'N/A':
-                model_size = f"{model_size / (1024 ** 3):.2f} GB"
-            print(f"{i}. \033[94m{model_name}\033[0m by \033[93m{author}\033[0m (\033[96m{model_id}\033[0m) \033[93m(Size: {model_size})\033[0m")
-        print("Enter 'n' for the next page, 'p' for the previous page, 'f' to filter, 's' to sort, 'r' to return to previous search results, or the model number to download.")
-
+            # Fetch branch file sizes for the current model
+            branch_sizes = await self.model_downloader.get_branch_file_sizes(model_id)
+            if branch_sizes:
+                model_size = sum(branch_sizes.values()) / (1024 ** 3)
+                size_str = f"{model_size:.2f} GB"
+            else:
+                size_str = 'N/A'
+            print(f"{i}. \033[94m{model_name}\033[0m by \033[93m{author}\033[0m (\033[96m{model_id}\033[0m) \033[93m(Size: {size_str})\033[0m")
+        print("Enter 'n' for next page, 'p' for previous page, 'f' to filter, 's' to sort, 'r' for previous results, or the model # to download.")
+        
     async def prefetch_branch_sizes(self, current_page, total_pages):
         prefetch_threshold = 4  # Prefetch threshold in pages
         prefetch_pages = min(prefetch_threshold, total_pages - current_page)
@@ -148,7 +149,7 @@ class AsyncSearch:
         return current_models
 
     async def handle_user_choice(self):
-        print("Enter 'b' to go back to the filtered search results, 'm' to return to the main search results, or 'q' to quit.")
+        print("Enter 'b' to see the filtered search results, 'm' for the main search results, or 'q' to quit.")
         user_input = await asyncio.get_event_loop().run_in_executor(None, input, "> ")
         if user_input.lower() == 'b':
             return
