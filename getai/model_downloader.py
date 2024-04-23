@@ -233,9 +233,9 @@ class AsyncModelDownloader:
             print(f"No active session available to download model {model_id}.")
 
     async def download_model(self, identifier, branch, clean, check):
-        branch_sizes = await self.get_branch_file_sizes(identifier)
-        branches = await self.get_model_branches(identifier)
         if self.session:
+            branch_sizes = await self.get_branch_file_sizes(identifier)
+            branches = await self.get_model_branches(identifier)
             branch_to_use = await self.select_branch(branches, branch, branch_sizes)
             links, sha256_list, is_lora, is_llamacpp = await self.get_download_links_from_huggingface(identifier, branch_to_use, text_only=False)
             output_folder = self.get_output_folder(identifier, branch_to_use, is_lora, is_llamacpp, self.output_dir)
@@ -245,7 +245,7 @@ class AsyncModelDownloader:
                 await self.check_model_files(identifier, branch_to_use, links, sha256_dict, output_folder)
         else:
             print(f"No active session available to download model {identifier}.")
-
+            
     async def download_model_file(self, session, url, output_folder, file_hash):
         filename = Path(url.rsplit('/', 1)[1])
         output_path = output_folder / filename

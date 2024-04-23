@@ -84,68 +84,65 @@ async def main():
             return
 
         if args.search_mode == 'model':
-            model_downloader = AsyncModelDownloader(
+            async with AsyncModelDownloader(
                 max_retries=5,
                 output_dir=None,
                 max_connections=5,
                 hf_token=hf_token
-            )
-            async with model_downloader:
+            ) as model_downloader:
                 try:
                     await model_downloader.search_models(args.query)
                 except KeyboardInterrupt:
                     print("\nKeyboardInterrupt received. Closing model downloader...")
-                finally:
-                    await close_model_downloader(model_downloader)
-        else: 
-            dataset_downloader = AsyncDatasetDownloader(
+                except Exception as e:
+                    print(f"Error during model search: {e}")
+        else:
+            async with AsyncDatasetDownloader(
                 max_retries=5,
                 output_dir=None,
                 max_connections=5,
                 hf_token=hf_token
-            )
+            ) as dataset_downloader:
+                try:
+                    await dataset_downloader.search_datasets(
+                        query=args.query,
+                        author=args.author,
+                        filter=args.filter,
+                        sort=args.sort,
+                        direction=args.direction,
+                        limit=args.limit,
+                        full=args.full
+                    )
+                except KeyboardInterrupt:
+                    print("\nKeyboardInterrupt received. Closing dataset downloader...")
+                except Exception as e:
+                    print(f"Error during dataset search: {e}")
+    elif args.mode == 'dataset':
+        async with AsyncDatasetDownloader(
+            max_retries=args.max_retries,
+            output_dir=args.output_dir,
+            max_connections=args.max_connections,
+            hf_token=hf_token
+        ) as dataset_downloader:
             try:
-                await dataset_downloader.search_datasets(
-                    query=args.query,
-                    author=args.author,
-                    filter=args.filter,
-                    sort=args.sort,
-                    direction=args.direction,
-                    limit=args.limit,
-                    full=args.full
-                )
+                await dataset_downloader.download_dataset_info(args.identifier, args.revision, args.full)
             except KeyboardInterrupt:
                 print("\nKeyboardInterrupt received. Closing dataset downloader...")
-            finally:
-                await close_dataset_downloader(dataset_downloader)
-    elif args.mode == 'dataset':
-        dataset_downloader = AsyncDatasetDownloader(
-            max_retries=args.max_retries,
-            output_dir=args.output_dir,
-            max_connections=args.max_connections,
-            hf_token=hf_token
-        )
-
-        try:
-            await dataset_downloader.download_dataset_info(args.identifier, args.revision, args.full)
-        except KeyboardInterrupt:
-            print("\nKeyboardInterrupt received. Closing dataset downloader...")
-        finally:
-            await close_dataset_downloader(dataset_downloader)
+            except Exception as e:
+                print(f"Error during dataset download: {e}")
     else:  # args.mode == 'model'
-        model_downloader = AsyncModelDownloader(
+        async with AsyncModelDownloader(
             max_retries=args.max_retries,
             output_dir=args.output_dir,
             max_connections=args.max_connections,
             hf_token=hf_token
-        )
-
-        try:
-            await model_downloader.download_model(args.identifier, args.branch, args.clean, args.check)
-        except KeyboardInterrupt:
-            print("\nKeyboardInterrupt received. Closing model downloader...")
-        finally:
-            await close_model_downloader(model_downloader)
+        ) as model_downloader:
+            try:
+                await model_downloader.download_model(args.identifier, args.branch, args.clean, args.check)
+            except KeyboardInterrupt:
+                print("\nKeyboardInterrupt received. Closing model downloader...")
+            except Exception as e:
+                print(f"Error during model download: {e}")
 
 
 if __name__ == "__main__":

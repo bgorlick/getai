@@ -223,14 +223,16 @@ class AsyncDatasetDownloader:
                     output_folder = self.get_dataset_output_folder(dataset_id)
                     output_folder.mkdir(parents=True, exist_ok=True)
                     logger.info(f"Downloading dataset files to: {output_folder}")
+                    tasks = []
                     for file in file_tree:
                         file_url = f"{BASE_URL}/datasets/{dataset_id}/resolve/{revision or 'main'}/{file['path']}"
-                        await self.download_dataset_file(file_url, output_folder / file['path'])
+                        tasks.append(self.download_dataset_file(file_url, output_folder / file['path']))
+                    await asyncio.gather(*tasks)
                 else:
                     logging.error(f"Error fetching dataset file tree: HTTP {response.status}")
         except Exception as e:
             logging.exception(f"Error downloading dataset files: {e}")
-
+        
     async def download_dataset_file(self, url, file_path):
         try:
             async with self.session.get(url) as response:

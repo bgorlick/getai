@@ -5,7 +5,7 @@ with open('README.md', 'r', encoding='utf-8') as fh:
 
 setup(
     name='getai',
-    version='0.0.1',
+    version='0.0.4',
     author='Ben Gorlick',
     author_email='ben@unifiedlearning.ai',
     description='GetAI - Asynchronous AI Downloader for models, datasets and tools',
