@@ -7,8 +7,6 @@ import logging
 import re
 from pathlib import Path
 from typing import Optional, Union, Dict, BinaryIO
-import os
-import requests
 
 import aiofiles
 import aiohttp
