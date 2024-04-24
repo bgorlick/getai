@@ -10,6 +10,15 @@ import logging
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 
+def get_dataset_output_folder(dataset_id, output_dir=None):
+    if output_dir:
+        return output_dir / dataset_id.replace('/', '_')
+    else:
+        default_dir = Path.home() / '.getai' / 'datasets'
+        default_dir.mkdir(parents=True, exist_ok=True)
+        return default_dir / dataset_id.replace('/', '_')
+
+    
 def convert_to_bytes(size_str):
     """Converts size string like '2.3 GB' or '200 MB' to bytes."""
     try:

@@ -1,27 +1,16 @@
-# GetAI - v0.0.1 - Asynchronous AI Model and Dataset Downloader - github.com/bgorlick/getai/
+# main.py
+# GetAI - v0.0.9 - Asynchronous AI Model and Dataset Downloader - github.com/bgorlick/getai/
 """ main.py - Contains the main function for the GetAI CLI - Asynchronous AI Model and Dataset Downloader """
 import argparse
 import asyncio
 import logging
 from .utils import get_hf_token
 from .dataset_downloader import AsyncDatasetDownloader
+from .dataset_search import AsyncDatasetSearch
 from .model_downloader import AsyncModelDownloader
 
 logging.basicConfig(level=logging.INFO)
-
-
-async def close_model_downloader(model_downloader):
-    try:
-        await model_downloader.close()
-    except Exception as e:
-        print(f"Error closing model_downloader: {e}")
-
-
-async def close_dataset_downloader(dataset_downloader):
-    try:
-        await dataset_downloader.close_dataset_downloader()
-    except Exception as e:
-        print(f"Error closing dataset_downloader: {e}")
+logger = logging.getLogger(__name__)
 
 
 async def main():
@@ -43,7 +32,6 @@ async def main():
     dataset_parser.add_argument('identifier', type=str, help='Dataset identifier on Hugging Face')
     dataset_parser.add_argument('--revision', type=str, help='Revision of the dataset')
     dataset_parser.add_argument('--output-dir', type=str, help='Directory to save the dataset', default=None)
-    dataset_parser.add_argument('--max-retries', type=int, default=5, help='Max retries for downloads')
     dataset_parser.add_argument('--max-connections', type=int, default=5, help='Max simultaneous connections for downloads')
     dataset_parser.add_argument('--full', action='store_true', help='Fetch full dataset information')
 
@@ -58,6 +46,8 @@ async def main():
     # Dataset search mode
     dataset_search_parser = search_subparsers.add_parser('dataset', help='Search for datasets')
     dataset_search_parser.add_argument('query', type=str, help='Search query for datasets')
+    dataset_search_parser.add_argument('--output-dir', type=str, help='Directory to save the dataset', default=None)
+    dataset_search_parser.add_argument('--max-connections', type=int, default=5, help='Max simultaneous connections for downloads')
     dataset_search_parser.add_argument('--author', type=str, help='Filter datasets by author or organization')
     dataset_search_parser.add_argument('--filter', type=str, help='Filter datasets based on tags')
     dataset_search_parser.add_argument('--sort', type=str, help='Property to use when sorting datasets')
@@ -72,35 +62,34 @@ async def main():
 
     hf_token = get_hf_token(update_token=args.update_token)
     if args.update_token:
-        print("Hugging Face token updated successfully.")
+        logger.info("Hugging Face token updated successfully.")
 
     if args.mode not in ['model', 'dataset', 'search']:
-        logging.error("Invalid mode. Please specify 'model', 'dataset', or 'search'.")
+        logger.error("Invalid mode. Please specify 'model', 'dataset', or 'search'.")
         return
 
     if args.mode == 'search':
         if not args.search_mode:
-            logging.error("Please specify the search mode (model or dataset).")
+            logger.error("Please specify the search mode (model or dataset).")
             return
 
         if args.search_mode == 'model':
             async with AsyncModelDownloader(
                 max_retries=5,
                 output_dir=None,
-                max_connections=5,
+                max_connections=args.max_connections,
                 hf_token=hf_token
             ) as model_downloader:
                 try:
                     await model_downloader.search_models(args.query)
                 except KeyboardInterrupt:
-                    print("\nKeyboardInterrupt received. Closing model downloader...")
+                    logger.info("\nKeyboardInterrupt received. Closing model downloader...")
                 except Exception as e:
-                    print(f"Error during model search: {e}")
+                    logger.error(f"Error during model search: {e}")
         else:
             async with AsyncDatasetDownloader(
-                max_retries=5,
-                output_dir=None,
-                max_connections=5,
+                output_dir=args.output_dir,
+                max_connections=args.max_connections,
                 hf_token=hf_token
             ) as dataset_downloader:
                 try:
@@ -114,12 +103,11 @@ async def main():
                         full=args.full
                     )
                 except KeyboardInterrupt:
-                    print("\nKeyboardInterrupt received. Closing dataset downloader...")
+                    logger.info("\nKeyboardInterrupt received. Closing dataset downloader...")
                 except Exception as e:
-                    print(f"Error during dataset search: {e}")
+                    logger.error(f"Error during dataset search: {e}")
     elif args.mode == 'dataset':
         async with AsyncDatasetDownloader(
-            max_retries=args.max_retries,
             output_dir=args.output_dir,
             max_connections=args.max_connections,
             hf_token=hf_token
@@ -127,9 +115,9 @@ async def main():
             try:
                 await dataset_downloader.download_dataset_info(args.identifier, args.revision, args.full)
             except KeyboardInterrupt:
-                print("\nKeyboardInterrupt received. Closing dataset downloader...")
+                logger.info("\nKeyboardInterrupt received. Closing dataset downloader...")
             except Exception as e:
-                print(f"Error during dataset download: {e}")
+                logger.error(f"Error during dataset download: {e}")
     else:  # args.mode == 'model'
         async with AsyncModelDownloader(
             max_retries=args.max_retries,
@@ -140,9 +128,9 @@ async def main():
             try:
                 await model_downloader.download_model(args.identifier, args.branch, args.clean, args.check)
             except KeyboardInterrupt:
-                print("\nKeyboardInterrupt received. Closing model downloader...")
+                logger.info("\nKeyboardInterrupt received. Closing model downloader...")
             except Exception as e:
-                print(f"Error during model download: {e}")
+                logger.error(f"Error during model download: {e}")
 
 
 if __name__ == "__main__":
@@ -150,7 +138,7 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("\nKeyboardInterrupt received. Closing downloader...")
+        logger.info("\nKeyboardInterrupt received. Closing downloader...")
     finally:
         pending_tasks = asyncio.all_tasks(loop)
         loop.run_until_complete(asyncio.gather(*pending_tasks, return_exceptions=True))
