@@ -6,15 +6,21 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Optional, Union, Dict, BinaryIO
+import os
+import requests
 
 import aiofiles
 import aiohttp
+from aiofiles import open as aio_open
+
 from aiohttp import ClientSession, TCPConnector
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from rainbow_tqdm import tqdm
 
 from .utils import convert_to_bytes, interactive_branch_selection
+import chunk
 
 BASE_URL = "https://huggingface.co"
 
@@ -246,7 +252,27 @@ class AsyncModelDownloader:
                 await self.check_model_files(identifier, branch_to_use, links, sha256_dict, output_folder)
         else:
             print(f"No active session available to download model {identifier}.")
-            
+
+    async def http_get(self, session, url: str, temp_file: BinaryIO, resume_size=0, headers=None):
+        headers = headers or {}
+        if resume_size > 0:
+            headers["Range"] = f"bytes={resume_size}-"
+        async with session.get(url, headers=headers) as r:
+            content_length = int(r.headers.get("Content-Length", 0))
+            total = resume_size + content_length
+            progress = tqdm(
+                unit="B",
+                unit_scale=True,
+                total=total,
+                initial=resume_size,
+                desc=f"Downloading {Path(url).name}",
+            )
+            async for chunk in r.content.iter_chunked(1024):
+                if chunk: 
+                    progress.update(len(chunk))
+                    temp_file.write(chunk)
+            progress.close()
+
     async def download_model_file(self, session, url, output_folder, file_hash):
         filename = Path(url.rsplit('/', 1)[1])
         output_path = output_folder / filename
@@ -258,22 +284,25 @@ class AsyncModelDownloader:
         # Acquire the lock before accessing the file
         async with self.file_locks[output_path]:
             if output_path.exists():
-                current_hash = await self.calculate_file_sha256(output_path)
-                if current_hash == file_hash:
-                    print(f"'{filename}' exists and matches expected SHA256 hash; skipping.")
+                if file_hash is not None:
+                    current_hash = await self.calculate_file_sha256(output_path)
+                    if current_hash == file_hash:
+                        self.logger.debug(f"'{filename}' exists and matches expected SHA256 hash; skipping.")
+                        return
+                    else:
+                        self.logger.debug(f"'{filename}' exists but SHA256 hash doesn't match; resuming download.")
+                        self.logger.debug(f"Expected SHA256: {file_hash}")
+                        self.logger.debug(f"Actual SHA256: {current_hash}")
+                        resume_size = output_path.stat().st_size
+                else:
+                    self.logger.debug(f"'{filename}' exists but no expected SHA256 hash provided; skipping.")
                     return
-                print(f"'{filename}' exists but SHA256 hash matching failed; redownloading.")
+            else:
+                resume_size = 0
 
-            async with session.get(url) as response:
-                response.raise_for_status()
-                total_size = response.content_length or 0
-                async with aiofiles.open(output_path, 'wb') as f:
-                    progress_bar = tqdm(total=total_size, desc=filename.name, unit='iB', unit_scale=True, ncols=100)
-                    async for chunk in response.content.iter_chunked(1024):
-                        await f.write(chunk)
-                        progress_bar.update(len(chunk))
-                    progress_bar.close()
-
+            async with aiofiles.open(output_path, "ab") as temp_file:
+                await self.http_get(session, url, temp_file, resume_size=resume_size)
+                
     async def search_models(self, query, model_id_filter=None, rfilename_filter=None):
         async with self.session as session:
             url = f"{BASE_URL}/api/models"
@@ -464,16 +493,21 @@ class AsyncModelDownloader:
         metadata_path = output_folder / 'huggingface-metadata.txt'
         async with aiofiles.open(metadata_path, 'w') as metafile:
             await metafile.write(metadata)
-        tasks = []
-        if self.session:
-            for link in links:
+        
+        semaphore = asyncio.Semaphore(self.max_connections)
+
+        async def download_file(link):
+            async with semaphore:
                 filename = Path(link).name
                 if filename in sha256_dict:
                     file_hash = sha256_dict[filename]
                 else:
                     print(f"Warning: No SHA256 hash found for {filename}. Downloading without sha256 verification.")
                     file_hash = None
-                tasks.append(self.download_model_file(self.session, link, output_folder, file_hash))
+                await self.download_model_file(self.session, link, output_folder, file_hash)
+        
+        if self.session:
+            tasks = [asyncio.ensure_future(download_file(link)) for link in links]
             await asyncio.gather(*tasks)
 
     async def check_model_files(self, model, branch, links, sha256_dict, output_folder):
@@ -503,13 +537,14 @@ class AsyncModelDownloader:
             print(f'[-] Invalid files or checksums for model: {model}, branch: {branch}. You may need to rerun the download process with the --clean flag.')
 
     async def calculate_file_sha256(self, file_path):
+        chunk_size = 1024 * 1024
         sha256 = hashlib.sha256()
-        async with aiofiles.open(file_path, 'rb') as f:
+        async with aio_open(file_path, 'rb') as file:
             while True:
-                data = await f.read(4096)
-                if not data:
+                chunk = await file.read(chunk_size)
+                if not chunk:
                     break
-                sha256.update(data)
+                sha256.update(chunk)
         return sha256.hexdigest()
 
     async def get_branch_file_sizes_for_models(self, models, quiet=False):
