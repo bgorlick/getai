@@ -1,13 +1,13 @@
 [tool.poetry]
 name = "getai"
-version = "0.0.7"
+version = "0.0.8"
 description = "GetAI - An asynchronous AI search and download tool for AI models, datasets, and tools. Designed to streamline the process of downloading machine learning models, datasets, and more."
 authors = ["Ben Gorlick <ben@unifiedlearning.ai>"]
 license = "MIT - with attribution"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.1"
+python = "^3.9"
 aiohttp = "^3.9.3"
 aiofiles = "^23.2.1"
 prompt-toolkit = "^3.0.43"

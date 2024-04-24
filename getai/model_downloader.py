@@ -22,7 +22,10 @@ import chunk
 
 BASE_URL = "https://huggingface.co"
 
-logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.DEBUG)
+# this program has two different loggers - root logging and self.logger within the AsyncModelDownloader class
+# the root logger is used for general logging, while the self.logger is used for more specific logging within the class
+
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 
 file_size_pattern = re.compile(r'<a class="[^"]*" title="Download file"[^>]*>([\d.]+ [GMK]B)')
 
@@ -198,7 +201,7 @@ class AsyncModelDownloader:
 
     def __init__(self, max_retries=5, output_dir=None, max_connections=5, hf_token=None):
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)  # change the self.logger level to DEBUG for more verbose output
         self.output_dir = output_dir
         self.max_retries = max_retries
         self.max_connections = max_connections
@@ -213,7 +216,7 @@ class AsyncModelDownloader:
         self.connector = TCPConnector(limit=self.max_connections)
         headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
         self.session = ClientSession(connector=self.connector, headers=headers)
-        self.logger.debug(f"Using token for authorization: {self.token is not None}")
+        self.logger.info(f"Using HF token for authorization: {self.token is not None}")
         self.logger.debug(f"Session created with headers: {headers}")
         return self
 
@@ -289,8 +292,8 @@ class AsyncModelDownloader:
                         return
                     else:
                         self.logger.debug(f"'{filename}' exists but SHA256 hash doesn't match; resuming download.")
-                        self.logger.debug(f"Expected SHA256: {file_hash}")
-                        self.logger.debug(f"Actual SHA256: {current_hash}")
+                        self.logger.info(f"Expected SHA256: {file_hash}")
+                        self.logger.info(f"Actual SHA256: {current_hash}")
                         resume_size = output_path.stat().st_size
                 else:
                     self.logger.debug(f"'{filename}' exists but no expected SHA256 hash provided; skipping.")
@@ -555,7 +558,7 @@ class AsyncModelDownloader:
 
     async def get_branch_file_sizes(self, model, quiet=False):
         if not quiet:
-            print(f"Fetching file sizes for {model}...")
+            self.logger.debug(f"Fetching file sizes for {model}...")
         branches = await self.get_model_branches(model)
         branch_sizes = {}
         if self.session:
@@ -570,9 +573,9 @@ class AsyncModelDownloader:
                             branch_sizes[branch] = total_size
                         else:
                             if not quiet:
-                                print(f"Failed to fetch page for branch: {branch}")
+                                self.logger.info(f"Failed to fetch page for branch: {branch}")
                 except Exception as e:
                     if not quiet:
-                        print(f"Error fetching branch file sizes for {model}, branch {branch}: {e}")
+                        self.logger.info(f"Error fetching branch file sizes for {model}, branch {branch}: {e}")
                     continue
         return branch_sizes
