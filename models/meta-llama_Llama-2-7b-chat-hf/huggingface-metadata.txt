@@ -1,0 +1,9 @@
+url: https://huggingface.co/meta-llama/Llama-2-7b-chat-hf
+branch: main
+download date: 2024-06-06 12:45:24
+sha256sum:
+ 66dec18c9f1705b9387d62f8485f4e7d871ca388718786737ed3c72dbfaac9fb model-00001-of-00002.safetensors
+ 0fd6895090da1b2ccffdb93964847709a3b31e6b69fe7dc5a480dce37c811b1d model-00002-of-00002.safetensors
+ aa5ed69a0bc6fb6c520651607f0d857f2aac245e721087d706926cf032887342 pytorch_model-00001-of-00002.bin
+ 1de3167f93dcd7c26ac5ad7077dfa987f2bc18e10078ccca6c975b2825c74827 pytorch_model-00002-of-00002.bin
+ 9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347 tokenizer.model

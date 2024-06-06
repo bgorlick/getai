@@ -1,0 +1,7 @@
+url: https://huggingface.co/lmsys/vicuna-7b-v1.5
+branch: main
+download date: 2024-06-06 11:42:20
+sha256sum:
+ 4133d2fcc5f31286881ea50806d95b721d016b533036a99dedce3f8fe88520e6 pytorch_model-00001-of-00002.bin
+ d261d3c35e92d3070d1e61ed821ebfca812a847d2a880757d82728acf005c5ac pytorch_model-00002-of-00002.bin
+ 9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347 tokenizer.model

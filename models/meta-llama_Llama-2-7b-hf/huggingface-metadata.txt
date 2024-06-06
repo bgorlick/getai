@@ -1,0 +1,9 @@
+url: https://huggingface.co/meta-llama/Llama-2-7b-hf
+branch: main
+download date: 2024-06-06 12:44:55
+sha256sum:
+ 4ec71fd53e99766de38f24753b30c9e8942630e9e576a1ba27b0ec531e87be41 model-00001-of-00002.safetensors
+ 41780b5dac322ac35598737e99208d90bdc632a1ba3389ebedbb46a1d8385a7f model-00002-of-00002.safetensors
+ ee62ed2ad7ded505ae47df50bc6c52916860dfb1c009df4715148cc4bfb50d2f pytorch_model-00001-of-00002.bin
+ 1fd7762035b3ca4f2d6af6bf10129689a119b7c38058025f9842511532ea02fb pytorch_model-00002-of-00002.bin
+ 9e556afd44213b6bd1be2b850ebbbd98f5481437a8021afaf58ee7fb1818d347 tokenizer.model

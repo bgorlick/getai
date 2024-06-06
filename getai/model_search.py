@@ -1,16 +1,24 @@
-# model_search.py - Asynchronous model search and download utility for Hugging Face models.
+""" model_search.py - GetAI model search and download functions. """
 
 import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple, Set, Any
-from aiohttp import ClientSession, TCPConnector
+from typing import (
+    Optional,
+    Dict,
+    List,
+    Tuple,
+    Set,
+    Any,  # pylint: disable=unused-import noqa: F401
+)
+from aiohttp import ClientSession
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 
-from .utils import interactive_branch_selection, convert_to_bytes
-from .model_downloader import AsyncModelDownloader
+# Import API functions
+from getai import download_model
+from getai.utils import interactive_branch_selection, convert_to_bytes
 
 BASE_URL = "https://huggingface.co"
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
@@ -23,15 +31,17 @@ search_cache: Dict[str, List[Dict]] = {}
 
 
 class AsyncModelSearch:
+    """Class to asynchronously search and manage Hugging Face models."""
+
     def __init__(
         self,
         query: str,
         session: ClientSession,
         max_connections: int = 10,
-        model_downloader: Optional["AsyncModelDownloader"] = None,
         hf_token: Optional[str] = None,
         **kwargs: Any,  # Accepting additional keyword arguments for flexibility
     ):
+        """Initialize AsyncModelSearch with query and session."""
         self.query = query
         self.page_size = 20
         self.filtered_models: List[Dict] = []
@@ -49,20 +59,13 @@ class AsyncModelSearch:
         self.session = session
         self.semaphore = asyncio.Semaphore(self.max_connections)
 
-        # Initialize model downloader with additional kwargs if provided
-        self.model_downloader = model_downloader or AsyncModelDownloader(
-            max_connections=self.max_connections,
-            hf_token=self.token,
-            session=session,
-            **kwargs,
-        )
-
     async def search_models(
         self,
         query: Optional[str] = None,
         model_id_filter: Optional[str] = None,
         rfilename_filter: Optional[str] = None,
     ) -> None:
+        """Search models based on the query and filters."""
         if not query:
             query = self.query
 
@@ -83,7 +86,7 @@ class AsyncModelSearch:
             }
             retry_count = 0
             models = []
-            while retry_count < self.model_downloader.max_retries:
+            while retry_count < self.max_connections:
                 async with self.session.get(url, params=params) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -92,7 +95,7 @@ class AsyncModelSearch:
                         break
                     elif response.status == 503:
                         retry_count += 1
-                        if retry_count < self.model_downloader.max_retries:
+                        if retry_count < self.max_connections:
                             delay = 2**retry_count
                             self.logger.warning(
                                 "Received 503 error. Retrying in %s seconds...", delay
@@ -126,6 +129,7 @@ class AsyncModelSearch:
         model_id_filter: Optional[str],
         rfilename_filter: Optional[str],
     ) -> List[Dict]:
+        """Filter models by ID and filename."""
         filtered_models = []
         for model in models:
             if (
@@ -144,6 +148,7 @@ class AsyncModelSearch:
         return filtered_models
 
     async def display_search_results(self):
+        """Display the search results interactively."""
         total_pages = (len(self.filtered_models) + self.page_size - 1) // self.page_size
         current_page = self.search_history[-1][1]
 
@@ -185,13 +190,17 @@ class AsyncModelSearch:
                 ]
                 branches = await self.get_model_branches(selected_model["id"])
                 selected_branch = await self.select_branch_interactive(branches)
-                await self.model_downloader.download_model(
-                    selected_model["id"], selected_branch, False, False
+                await download_model(
+                    identifier=selected_model["id"],
+                    branch=selected_branch,
+                    hf_token=self.token,
+                    max_connections=self.max_connections,
                 )
             else:
                 self.logger.error("Invalid input. Please try again.")
 
     async def display_current_page(self, current_page: int, total_pages: int):
+        """Display the models for the current page."""
         start_index = (current_page - 1) * self.page_size
         end_index = min(start_index + self.page_size, len(self.filtered_models))
         current_models = self.filtered_models[start_index:end_index]
@@ -226,6 +235,7 @@ class AsyncModelSearch:
         )
 
     async def get_model_size_str(self, model_id: str) -> str:
+        """Get the size of the model as a string."""
         if model_id not in self.branch_sizes:
             async with self.semaphore:
                 branch_sizes = await self.get_branch_file_sizes(model_id)
@@ -239,6 +249,7 @@ class AsyncModelSearch:
         return "N/A"
 
     async def prefetch_branch_sizes(self, start_page: int, end_page: int):
+        """Prefetch the branch sizes for the models on specified pages."""
         start_index = (start_page - 1) * self.page_size
         end_index = min(end_page * self.page_size, len(self.filtered_models))
         models_to_prefetch = self.filtered_models[start_index:end_index]
@@ -258,6 +269,7 @@ class AsyncModelSearch:
     async def prefetch_remaining_branch_sizes(
         self, current_page: int, total_pages: int
     ):
+        """Prefetch branch sizes for remaining models beyond current page."""
         prefetch_threshold = 2
         prefetch_pages = min(prefetch_threshold, total_pages - current_page)
         if prefetch_pages > 0:
@@ -292,6 +304,7 @@ class AsyncModelSearch:
                 self.prefetched_pages.update(pages_not_cached)
 
     async def get_user_input(self, current_page: int) -> str:
+        """Get user input for the current page."""
         current_models = self.get_current_models(current_page)
         model_completer = WordCompleter(
             [str(i) for i in range(1, len(current_models) + 1)]
@@ -301,11 +314,13 @@ class AsyncModelSearch:
         return await prompt_session.prompt_async("Enter your choice: ")
 
     def get_current_models(self, current_page: int) -> List[Dict]:
+        """Get the models for the current page."""
         start_index = (current_page - 1) * self.page_size
         end_index = min(start_index + self.page_size, len(self.filtered_models))
         return self.filtered_models[start_index:end_index]
 
     async def filter_search_results(self):
+        """Filter search results based on user input."""
         print("Enter the filter keyword:")
         filter_keyword = await asyncio.get_event_loop().run_in_executor(
             None, input, "> "
@@ -327,6 +342,7 @@ class AsyncModelSearch:
             print(f"No models found for the filter keyword '{filter_keyword}'.")
 
     async def sort_search_results(self):
+        """Sort search results based on user input criteria."""
         print("Enter the sort criteria (e.g., 'downloads', 'likes', 'lastModified'):")
         sort_criteria = await asyncio.get_event_loop().run_in_executor(
             None, input, "> "
@@ -345,6 +361,7 @@ class AsyncModelSearch:
         )
 
     async def select_branch_interactive(self, branches: List[str]) -> str:
+        """Select a branch interactively from the list."""
         if len(branches) > 1:
             print("Available branches:")
             for i, branch in enumerate(branches, start=1):
@@ -367,6 +384,7 @@ class AsyncModelSearch:
         branches: List[str],
         branch_arg: Optional[str],
     ) -> str:
+        """Select a branch based on user input or default to main."""
         if branch_arg:
             if isinstance(branch_arg, str):
                 return branch_arg if branch_arg in branches else "main"
@@ -394,6 +412,7 @@ class AsyncModelSearch:
         return "main"
 
     async def get_model_branches(self, model: str) -> List[str]:
+        """Get a list of branches for the given model."""
         if self.session is None:
             self.logger.error("Session is not initialized.")
             return []
@@ -410,6 +429,7 @@ class AsyncModelSearch:
         return []
 
     def update_display_with_new_size(self, model_id: str):
+        """Update the display with new size information."""
         # can be used for debugging
         # print(f"Updated size for model {model_id}: {self.branch_sizes[model_id]}")
         pass
@@ -417,6 +437,7 @@ class AsyncModelSearch:
     async def get_branch_file_sizes_for_models(
         self, models: List[Dict], quiet: bool = False
     ) -> Dict[str, Dict[str, int]]:
+        """Get file sizes for branches of multiple models."""
         branch_sizes: Dict[str, Dict[str, int]] = {}
         for model in models:
             model_id = model["id"]
@@ -429,6 +450,7 @@ class AsyncModelSearch:
     async def get_branch_file_sizes(
         self, model: str, quiet: bool = False
     ) -> Dict[str, int]:
+        """Get file sizes for all branches of a model."""
         if not quiet:
             self.logger.debug("Fetching file sizes for %s...", model)
         branches = await self.get_model_branches(model)

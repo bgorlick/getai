@@ -1,0 +1,18 @@
+[MASTER]
+init-hook='import sys; sys.path.append("/home/ai/.pyenv/versions/3.11.8/envs/getai/lib/python3.11/site-packages")'
+
+[MESSAGES CONTROL]
+disable=
+    suppressed-message,
+    locally-disabled,
+    useless-suppression
+
+enable=
+    deprecated-pragma,
+    use-symbolic-message-instead
+
+[TYPECHECK]
+ignored-modules=tenacity
+
+[REPORTS]
+output-format=colorized

@@ -3,3 +3,6 @@ rainbow_tqdm
 requests
 aiohttp
 PyYAML
+types-aiofiles
+aiofiles
+tenacity

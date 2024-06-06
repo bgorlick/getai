@@ -1,86 +1,28 @@
-"""
-Helper README:
+""" api.py for GetAI - Contains the core API functions for searching and downloading datasets and models. """
 
-This module provides a simplified interface to interact with the getai tool,
-allowing users to search and download datasets and models from Hugging Face.
-
-Usage Examples:
----------------
-1. Search for datasets with default settings:
-    ```python
-    from getai import search_datasets
-    import asyncio
-
-    async def main():
-        await search_datasets("text classification")
-
-    asyncio.run(main())
-    ```
-
-2. Download a specific dataset:
-    ```python
-    from getai import download_dataset
-    import asyncio
-
-    async def main():
-        await download_dataset("dataset-id")
-
-    asyncio.run(main())
-    ```
-
-3. Search for models with custom settings:
-    ```python
-    from getai import search_models
-    import asyncio
-
-    async def main():
-        await search_models("bert", max_connections=10)
-
-    asyncio.run(main())
-    ```
-
-4. Download a model specifying a branch:
-    ```python
-    from getai import download_model
-    import asyncio
-
-    async def main():
-        await download_model("bert-base-uncased", branch="v1.0")
-
-    asyncio.run(main())
-    ```
-
-Additional Configurations:
----------------------------
-- max_connections: int (default: 5) - Maximum number of concurrent connections.
-- output_dir: str - Directory to save downloaded files.
-- hf_token: str - Hugging Face token for authentication.
-"""
-
-# api.py
-
-# native libs first
 from pathlib import Path
 import logging
 
-# relative import local libs
-from .dataset_downloader import AsyncDatasetDownloader
-from .dataset_search import AsyncDatasetSearch
-from .model_downloader import AsyncModelDownloader
-from .model_search import AsyncModelSearch
-from .utils import get_hf_token, get_dataset_output_folder
-from .session_manager import SessionManager
-
+from getai.utils import get_hf_token
+from getai.session_manager import SessionManager
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Define default directories
+DEFAULT_MODEL_DIR = Path.home() / ".getai" / "models"
+DEFAULT_DATASET_DIR = Path.home() / ".getai" / "datasets"
 
 
 async def search_datasets(
     query, hf_token=None, max_connections=5, output_dir=None, **kwargs
 ):
+    """Search datasets on Hugging Face based on a query."""
     hf_token = hf_token or get_hf_token()
-    output_dir = Path(output_dir) if output_dir else get_dataset_output_folder(query)
+    output_dir = Path(output_dir) if output_dir else DEFAULT_DATASET_DIR / query
+
+    from getai.dataset_search import AsyncDatasetSearch
+    from getai.dataset_downloader import AsyncDatasetDownloader
 
     async with SessionManager(
         max_connections=max_connections, hf_token=hf_token
@@ -107,10 +49,11 @@ async def search_datasets(
 async def download_dataset(
     identifier, hf_token=None, max_connections=5, output_dir=None, **kwargs
 ):
+    """Download a dataset from Hugging Face by its identifier."""
     hf_token = hf_token or get_hf_token()
-    output_dir = (
-        Path(output_dir) if output_dir else get_dataset_output_folder(identifier)
-    )
+    output_dir = Path(output_dir) if output_dir else DEFAULT_DATASET_DIR / identifier
+
+    from getai.dataset_downloader import AsyncDatasetDownloader
 
     async with SessionManager(
         max_connections=max_connections, hf_token=hf_token
@@ -123,7 +66,11 @@ async def download_dataset(
 
 
 async def search_models(query, hf_token=None, max_connections=5, **kwargs):
+    """Search models on Hugging Face based on a query."""
     hf_token = hf_token or get_hf_token()
+
+    from getai.model_search import AsyncModelSearch
+    from getai.model_downloader import AsyncModelDownloader
 
     async with SessionManager(
         max_connections=max_connections, hf_token=hf_token
@@ -140,7 +87,7 @@ async def search_models(query, hf_token=None, max_connections=5, **kwargs):
         downloader = AsyncModelDownloader(
             session=session,
             max_connections=max_connections,
-            output_dir=Path.home() / ".getai" / "models",
+            output_dir=DEFAULT_MODEL_DIR,
         )
         for model in searcher.filtered_models:
             await downloader.download_model(model["id"], branch="main", **kwargs)
@@ -154,8 +101,11 @@ async def download_model(
     output_dir=None,
     **kwargs
 ):
+    """Download a model from Hugging Face by its identifier and branch."""
     hf_token = hf_token or get_hf_token()
-    output_dir = Path(output_dir) if output_dir else Path.home() / ".getai" / "models"
+    output_dir = Path(output_dir) if output_dir else DEFAULT_MODEL_DIR
+
+    from getai.model_downloader import AsyncModelDownloader
 
     async with SessionManager(
         max_connections=max_connections, hf_token=hf_token
