@@ -1,7 +1,7 @@
 
 # GetAI - The Easiest to Use AI Model Search & Download API and Interactive Console Tool
 
-![PyPI](https://img.shields.io/pypi/v/getai)
+![PyPI](https://img.shields.io/pypi/v/getai) ![Pylint](https://github.com/bgorlick/getai/actions/workflows/pylint.yml/badge.svg)
 
 GetAI is a powerful API library and command-line tool for AI Models and Datasets. It simplifies the process of searching, downloading, and exploring AI models and datasets from various sources like Hugging Face and other platforms. With GetAI, you can easily find and download the models and datasets you need with a simple import statement and minimal lines of code, without the hassle of navigating through multiple websites and repositories.
 
