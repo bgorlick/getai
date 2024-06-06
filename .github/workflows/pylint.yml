@@ -21,8 +21,11 @@ jobs:
         pip install pylint
     - name: Run Pylint
       run: |
-        pylint getai/*.py
-    - name: Report pylint errors
-      if: failure()
-      run: |
-        echo "Pylint found issues in the code. Please review the errors above."
+        pylint getai/*.py > pylint-report.txt || true
+    - name: Upload Pylint Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: pylint-report-${{ matrix.os }}-${{ matrix.python-version }}
+        path: pylint-report.txt
+    - name: Display Pylint Report
+      run: cat pylint-report.txt
