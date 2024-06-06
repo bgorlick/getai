@@ -2,8 +2,6 @@
 # GetAI - The Easiest to Use AI Model Search & Download API and Interactive Console Tool
 
 ![PyPI](https://img.shields.io/pypi/v/getai)
-![License](https://img.shields.io/github/license/bgorlick/getai)
-![Build Status](https://img.shields.io/github/actions/workflow/status/bgorlick/getai/build.yml)
 
 GetAI is a powerful API library and command-line tool for AI Models and Datasets. It simplifies the process of searching, downloading, and exploring AI models and datasets from various sources like Hugging Face and other platforms. With GetAI, you can easily find and download the models and datasets you need with a simple import statement and minimal lines of code, without the hassle of navigating through multiple websites and repositories.
 
@@ -240,10 +238,10 @@ import asyncio
 
 async def download_dataset_example():
     await download_dataset(
-        identifier="glue/sst2",
-        hf_token="your_huggingface_token",
+        identifier="stanfordnlp/imdb",
+        hf_token="None",
         max_connections=5,
-        output_dir="datasets/sst2"
+        output_dir="datasets/stanfordnlp/imdb"
     )
 
 if __name__ == "__main__":
