@@ -1,4 +1,3 @@
-
 # Compiled source #
 ###################
 *.com
@@ -18,12 +17,9 @@ test.sh
 ############
 # it's better to exclude the package directories,
 # as dependencies should be managed with a package manager, not version control
-*.jar
-*.war
-*.ear
-*node_modules/
-*jspm_packages/
-*vendor/
+node_modules/
+jspm_packages/
+vendor/
 
 # Logs and databases #
 ######################
@@ -295,4 +291,3 @@ dkms.conf
 *.crt
 *.cer
 *.der
-
