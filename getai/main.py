@@ -1,5 +1,3 @@
-""" main.py - Main script for the GetAI CLI. """
-
 import argparse
 import asyncio
 import logging

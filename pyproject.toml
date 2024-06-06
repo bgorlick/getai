@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "getai"
-version = "0.0.94"
+version = "0.0.96"
 description = "GetAI - An asynchronous AI search and download tool for AI models, datasets, and tools. Designed to streamline the process of downloading machine learning models, datasets, and more."
 authors = ["Ben Gorlick <ben@unifiedlearning.ai>"]
 license = "MIT - with attribution"

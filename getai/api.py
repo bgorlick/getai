@@ -43,7 +43,14 @@ async def search_datasets(
             session=session, max_connections=max_connections, output_dir=output_dir
         )
         for dataset in searcher.data["filtered_datasets"]:
-            await downloader.download_dataset_info(dataset["id"], **kwargs)
+            await downloader.download_dataset_info(
+                dataset["id"],
+                **{
+                    key: value
+                    for key, value in kwargs.items()
+                    if key in downloader.get_expected_kwargs()
+                }
+            )
 
 
 async def download_dataset(
@@ -62,7 +69,14 @@ async def download_dataset(
         downloader = AsyncDatasetDownloader(
             session=session, max_connections=max_connections, output_dir=output_dir
         )
-        await downloader.download_dataset_info(identifier, **kwargs)
+        await downloader.download_dataset_info(
+            identifier,
+            **{
+                key: value
+                for key, value in kwargs.items()
+                if key in downloader.get_expected_kwargs()
+            }
+        )
 
 
 async def search_models(query, hf_token=None, max_connections=5, **kwargs):

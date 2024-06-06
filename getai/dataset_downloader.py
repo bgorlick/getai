@@ -81,6 +81,10 @@ class AsyncDatasetDownloader:
         except Exception as e:
             logger.exception("Unexpected error while downloading dataset info: %s", e)
 
+    def get_expected_kwargs(self):
+        """Return the expected keyword arguments for download_dataset_info."""
+        return {"revision", "full", "output_folder"}
+
     async def download_dataset_files(
         self,
         dataset_id: str,
