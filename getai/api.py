@@ -22,7 +22,6 @@ async def search_datasets(
     output_dir = Path(output_dir) if output_dir else DEFAULT_DATASET_DIR / query
 
     from getai.dataset_search import AsyncDatasetSearch
-    from getai.dataset_downloader import AsyncDatasetDownloader
 
     async with SessionManager(
         max_connections=max_connections, hf_token=hf_token
@@ -30,27 +29,15 @@ async def search_datasets(
         session = await manager.get_session()
         searcher = AsyncDatasetSearch(
             query=query,
-            filtered_datasets=[],
+            filtered_datasets=[],  # Initial empty list
             total_datasets=0,
             output_dir=output_dir,
             max_connections=max_connections,
             hf_token=hf_token,
             session=session,
         )
-        await searcher.search_datasets(query, **kwargs)
-
-        downloader = AsyncDatasetDownloader(
-            session=session, max_connections=max_connections, output_dir=output_dir
-        )
-        for dataset in searcher.data["filtered_datasets"]:
-            await downloader.download_dataset_info(
-                dataset["id"],
-                **{
-                    key: value
-                    for key, value in kwargs.items()
-                    if key in downloader.get_expected_kwargs()
-                }
-            )
+        # Display search results interactively
+        await searcher.display_dataset_search_results()
 
 
 async def download_dataset(
