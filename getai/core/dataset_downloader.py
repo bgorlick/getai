@@ -1,4 +1,4 @@
-""" dataset_downloader.py - GetAI Asynchronous Dataset Downloader. """
+""" getai/core/dataset_downloader.py - GetAI Asynchronous Dataset Downloader. """
 
 import logging
 import json
@@ -8,7 +8,6 @@ import hashlib
 import asyncio
 import aiohttp
 import aiofiles
-from aiohttp import ClientSession
 from rainbow_tqdm import tqdm
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -28,13 +27,11 @@ class AsyncDatasetDownloader:
 
     def __init__(
         self,
-        session: ClientSession,
         output_dir: Optional[Path] = None,
         max_connections: int = 5,
         hf_token: Optional[str] = None,
     ):
         """Initialize the downloader with settings."""
-        self.session = session
         self.output_dir: Path = (
             output_dir if output_dir else Path.home() / ".getai" / "datasets"
         )
@@ -50,36 +47,43 @@ class AsyncDatasetDownloader:
         output_folder: Optional[Path] = None,
     ):
         """Download dataset info from Hugging Face."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
+        from getai.core.session_manager import SessionManager
 
-        try:
-            url = f"{BASE_URL}/api/datasets/{dataset_id}"
-            if revision:
-                url += f"/revision/{revision}"
+        async with SessionManager(
+            max_connections=self.max_connections, hf_token=self.hf_token
+        ) as manager:
+            session = await manager.get_session()
+            try:
+                url = f"{BASE_URL}/api/datasets/{dataset_id}"
+                if revision:
+                    url += f"/revision/{revision}"
 
-            params = {"full": str(full).lower()}
-            async with self.session.get(url, params=params) as response:
-                if response.status == 200:
-                    dataset_info = await response.json()
-                    logger.info("Dataset info for %s:", dataset_id)
-                    logger.info("%s", dataset_info)
-                    output_folder = output_folder or self.output_dir / dataset_id
-                    output_folder.mkdir(parents=True, exist_ok=True)
-                    await self.download_dataset_files(
-                        dataset_id, revision, output_folder, dataset_info
-                    )
-                    await self.validate_checksums_and_sizes(output_folder, dataset_info)
-                else:
-                    logger.error(
-                        "Error fetching dataset info: HTTP %s", response.status
-                    )
-        except aiohttp.ClientError as e:
-            logger.exception("Client error while downloading dataset info: %s", e)
-        except asyncio.TimeoutError as e:
-            logger.exception("Timeout error while downloading dataset info: %s", e)
-        except Exception as e:
-            logger.exception("Unexpected error while downloading dataset info: %s", e)
+                params = {"full": str(full).lower()}
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        dataset_info = await response.json()
+                        logger.info("Dataset info for %s:", dataset_id)
+                        logger.info("%s", dataset_info)
+                        output_folder = output_folder or self.output_dir / dataset_id
+                        output_folder.mkdir(parents=True, exist_ok=True)
+                        await self.download_dataset_files(
+                            session, dataset_id, revision, output_folder, dataset_info
+                        )
+                        await self.validate_checksums_and_sizes(
+                            output_folder, dataset_info
+                        )
+                    else:
+                        logger.error(
+                            "Error fetching dataset info: HTTP %s", response.status
+                        )
+            except aiohttp.ClientError as e:
+                logger.exception("Client error while downloading dataset info: %s", e)
+            except asyncio.TimeoutError as e:
+                logger.exception("Timeout error while downloading dataset info: %s", e)
+            except Exception as e:
+                logger.exception(
+                    "Unexpected error while downloading dataset info: %s", e
+                )
 
     def get_expected_kwargs(self):
         """Return the expected keyword arguments for download_dataset_info."""
@@ -87,21 +91,19 @@ class AsyncDatasetDownloader:
 
     async def download_dataset_files(
         self,
+        session: aiohttp.ClientSession,
         dataset_id: str,
         revision: Optional[str] = None,
         output_folder: Optional[Path] = None,
         dataset_info: Optional[Dict[str, Any]] = None,
     ):
         """Download dataset files from Hugging Face."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
-
         output_folder = output_folder or self.output_dir / dataset_id
         output_folder.mkdir(parents=True, exist_ok=True)
 
         try:
             url = f"{BASE_URL}/api/datasets/{dataset_id}/tree/{revision or 'main'}"
-            async with self.session.get(url) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     file_tree = await response.json()
                     logger.info("Downloading dataset files to: %s", output_folder)
@@ -115,7 +117,7 @@ class AsyncDatasetDownloader:
                         else:
                             tasks.append(
                                 self.download_dataset_file(
-                                    file_url, output_folder / file["path"]
+                                    session, file_url, output_folder / file["path"]
                                 )
                             )
                     await asyncio.gather(*tasks)
@@ -126,7 +128,9 @@ class AsyncDatasetDownloader:
                             if sibling["rfilename"].endswith(".parquet"):
                                 lfs_url = f"{BASE_URL}/datasets/{dataset_id}/resolve/{revision or 'main'}/{sibling['rfilename']}"
                                 await self.download_git_lfs_file(
-                                    lfs_url, output_folder / sibling["rfilename"]
+                                    session,
+                                    lfs_url,
+                                    output_folder / sibling["rfilename"],
                                 )
 
                     metadata = await self.parse_json_files_for_metadata(output_folder)
@@ -135,7 +139,7 @@ class AsyncDatasetDownloader:
                         if lfs_metadata:
                             lfs_url = f"https://huggingface.co/{dataset_id}/resolve/{revision or 'main'}/{lfs_file['path']}"
                             await self.download_file_from_url(
-                                lfs_url, output_folder / lfs_file["path"]
+                                session, lfs_url, output_folder / lfs_file["path"]
                             )
                         else:
                             logger.error(
@@ -145,7 +149,7 @@ class AsyncDatasetDownloader:
                     source_datasets = metadata.get("source_datasets", [])
                     for source_url in source_datasets:
                         await self.download_file_from_url(
-                            source_url, output_folder / Path(source_url).name
+                            session, source_url, output_folder / Path(source_url).name
                         )
                 else:
                     logger.error(
@@ -158,13 +162,12 @@ class AsyncDatasetDownloader:
         except Exception as e:
             logger.exception("Unexpected error while downloading dataset files: %s", e)
 
-    async def download_dataset_file(self, url: str, file_path: Path):
+    async def download_dataset_file(
+        self, session: aiohttp.ClientSession, url: str, file_path: Path
+    ):
         """Download a single dataset file."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
-
         try:
-            async with self.session.get(url) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     total_size = response.content_length or 0
                     output_path = Path(file_path)
@@ -184,7 +187,7 @@ class AsyncDatasetDownloader:
                     logger.info("Downloaded dataset file: %s", output_path)
                 elif response.status == 404:
                     logger.info("Attempting to use LFS for %s", url)
-                    await self.download_git_lfs_file(url, file_path)
+                    await self.download_git_lfs_file(session, url, file_path)
                 else:
                     logger.error(
                         "Error downloading dataset file: HTTP %s", response.status
@@ -199,21 +202,20 @@ class AsyncDatasetDownloader:
     @retry(
         stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=10)
     )
-    async def download_git_lfs_file(self, url: str, file_path: Path):
+    async def download_git_lfs_file(
+        self, session: aiohttp.ClientSession, url: str, file_path: Path
+    ):
         """Download a Git LFS file."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
-
         try:
-            async with self.session.get(url) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     size = response.content_length or 0
 
                     if size > 0:
-                        await self.download_file_from_url(url, file_path)
+                        await self.download_file_from_url(session, url, file_path)
                     else:
                         logger.error("Missing size in LFS metadata.")
-                        await self.download_file_from_url(url, file_path)
+                        await self.download_file_from_url(session, url, file_path)
                 else:
                     logger.error(
                         "Error fetching Git LFS file info: HTTP %s", response.status
@@ -228,13 +230,12 @@ class AsyncDatasetDownloader:
     @retry(
         stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=10)
     )
-    async def download_file_from_url(self, url: str, file_path: Path):
+    async def download_file_from_url(
+        self, session: aiohttp.ClientSession, url: str, file_path: Path
+    ):
         """Download a file from a URL."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
-
         try:
-            async with self.session.get(url) as response:
+            async with session.get(url) as response:
                 if response.status == 200:
                     total_size = response.content_length or 0
                     output_path = Path(file_path)

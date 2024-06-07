@@ -1,4 +1,4 @@
-"""session_manager.py for GetAI - Contains the SessionManager class for managing aiohttp.ClientSession instances."""
+""" getai/core/session_manager.py for GetAI - Contains the SessionManager class for managing aiohttp.ClientSession instances."""
 
 from typing import Optional
 import aiohttp

@@ -1,21 +1,31 @@
-# getai/__init__.py for GetAI - Contains the core API functions for searching and downloading datasets and models.
+"""
+Initialization module for the getai package.
+"""
 
-from getai.utils import get_hf_token
-from getai.session_manager import SessionManager
-
-# Import the core API functions from the api module
-from getai.api import (
-    search_datasets,
-    download_dataset,
-    search_models,
-    download_model,
+from .core import (
+    AsyncDatasetDownloader,
+    AsyncDatasetSearch,
+    AsyncModelDownloader,
+    AsyncModelSearch,
+    SessionManager,
+    convert_to_bytes,
+    interactive_branch_selection,
+    get_hf_token,
+    get_hf_token_from_cli,
+    hf_login,
 )
 
 __all__ = [
-    "search_datasets",
-    "download_dataset",
-    "search_models",
-    "download_model",
-    "get_hf_token",
+    "AsyncDatasetDownloader",
+    "AsyncDatasetSearch",
+    "AsyncModelDownloader",
+    "AsyncModelSearch",
     "SessionManager",
+    "convert_to_bytes",
+    "interactive_branch_selection",
+    "get_hf_token",
+    "get_hf_token_from_cli",
+    "hf_login",
 ]
+
+# Path: getai/cli/__init__.py

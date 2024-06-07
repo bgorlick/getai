@@ -18,7 +18,6 @@ setup(
         "aiofiles",
         "prompt_toolkit",
         "rainbow-tqdm",
-        "PyYAML",
         "types-aiofiles",
         "tenacity",
     ],

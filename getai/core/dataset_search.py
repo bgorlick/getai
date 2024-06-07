@@ -1,10 +1,11 @@
+""" getai/core/dataset_search.py - This module handles the asynchronous dataset search functionality. """
+
 import logging
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import aiohttp
 import asyncio
-from aiohttp import ClientSession
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 
@@ -25,41 +26,34 @@ class AsyncDatasetSearch:
     def __init__(
         self,
         query: str,
-        filtered_datasets: List[Dict[str, Any]],
-        total_datasets: int,
         output_dir: Path,
         max_connections: int,
         hf_token: Optional[str],
-        session: ClientSession,
     ):
         self.config = {
             "query": query,
-            "total_datasets": total_datasets,
             "output_dir": output_dir,
             "max_connections": max_connections,
             "hf_token": hf_token,
-            "session": session,
             "page_size": 20,
             "timeout": aiohttp.ClientTimeout(total=None),
         }
-        self.data = {
-            "filtered_datasets": self.sort_by_last_modified(filtered_datasets),
-            "filtered_dataset_ids": {dataset["id"] for dataset in filtered_datasets},
-            "main_search_datasets": filtered_datasets.copy(),
-            "search_history": [(filtered_datasets.copy(), 1)],
+        self.data: Dict[str, Any] = {
+            "filtered_datasets": [],
+            "filtered_dataset_ids": set(),
+            "main_search_datasets": [],
+            "search_history": [],
         }
-        self.session = session
 
     @staticmethod
     def sort_by_last_modified(datasets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Sort the datasets by lastModified date in descending order."""
         return sorted(datasets, key=lambda x: x.get("lastModified", ""), reverse=True)
 
-    async def search_datasets(self, query: str, **kwargs):
+    async def search_datasets(
+        self, query: str, session: aiohttp.ClientSession, **kwargs
+    ):
         """Search datasets based on a query."""
-        if not self.session:
-            raise RuntimeError("Session is not initialized")
-
         params = {
             "search": query,
             "limit": 50,
@@ -74,7 +68,7 @@ class AsyncDatasetSearch:
         }
 
         search_url = f"{BASE_URL}/api/datasets"
-        async with self.session.get(search_url, params=params) as response:
+        async with session.get(search_url, params=params) as response:
             if response.status == 200:
                 datasets = await response.json()
                 sorted_datasets = self.sort_by_last_modified(datasets)
@@ -87,79 +81,87 @@ class AsyncDatasetSearch:
 
     async def display_dataset_search_results(self):
         """Display dataset search results and handle user interaction for downloading."""
-        await self.search_datasets(self.config["query"])
 
-        while True:
-            total_pages = (
-                len(self.data["filtered_datasets"]) + self.config["page_size"] - 1
-            ) // self.config["page_size"]
-            current_page = self.data["search_history"][-1][1]
+        from getai.core import SessionManager
+
+        async with SessionManager(
+            max_connections=self.config["max_connections"],
+            hf_token=self.config["hf_token"],
+        ) as manager:
+            session = await manager.get_session()
+            await self.search_datasets(self.config["query"], session)
 
             while True:
-                await self.display_current_dataset_page(current_page, total_pages)
-                user_input = await self.get_dataset_user_input(
-                    current_page, total_pages
-                )
+                total_pages = (
+                    len(self.data["filtered_datasets"]) + self.config["page_size"] - 1
+                ) // self.config["page_size"]
+                current_page = self.data["search_history"][-1][1]
 
-                if user_input.lower() == "n" and current_page < total_pages:
-                    current_page += 1
-                    self.data["search_history"][-1] = (
-                        self.data["filtered_datasets"],
-                        current_page,
+                while True:
+                    await self.display_current_dataset_page(current_page, total_pages)
+                    user_input = await self.get_dataset_user_input(
+                        current_page, total_pages
                     )
-                elif user_input.lower() == "p" and current_page > 1:
-                    current_page -= 1
-                    self.data["search_history"][-1] = (
-                        self.data["filtered_datasets"],
-                        current_page,
-                    )
-                elif user_input.lower() == "f":
-                    await self.filter_dataset_search_results()
-                    break
-                elif user_input.lower() == "s":
-                    await self.sort_dataset_search_results()
-                    break
-                elif user_input.lower() == "r":
-                    if len(self.data["search_history"]) > 1:
-                        self.data["search_history"].pop()
-                        (
+
+                    if user_input.lower() == "n" and current_page < total_pages:
+                        current_page += 1
+                        self.data["search_history"][-1] = (
                             self.data["filtered_datasets"],
                             current_page,
-                        ) = self.data[
-                            "search_history"
-                        ][-1]
-                        self.config["total_datasets"] = len(
-                            self.data["filtered_datasets"]
+                        )
+                    elif user_input.lower() == "p" and current_page > 1:
+                        current_page -= 1
+                        self.data["search_history"][-1] = (
+                            self.data["filtered_datasets"],
+                            current_page,
+                        )
+                    elif user_input.lower() == "f":
+                        await self.filter_dataset_search_results()
+                        break
+                    elif user_input.lower() == "s":
+                        await self.sort_dataset_search_results()
+                        break
+                    elif user_input.lower() == "r":
+                        if len(self.data["search_history"]) > 1:
+                            self.data["search_history"].pop()
+                            (
+                                self.data["filtered_datasets"],
+                                current_page,
+                            ) = self.data[
+                                "search_history"
+                            ][-1]
+                            self.config["total_datasets"] = len(
+                                self.data["filtered_datasets"]
+                            )
+                            break
+                        else:
+                            logger.info("You are already at the main search results.")
+                    elif user_input.isdigit() and 1 <= int(user_input) <= len(
+                        self.get_current_datasets(current_page)
+                    ):
+                        selected_dataset = self.get_current_datasets(current_page)[
+                            int(user_input) - 1
+                        ]
+                        output_folder = (
+                            Path(self.config["output_dir"]) / selected_dataset["id"]
+                        )
+                        output_folder.mkdir(parents=True, exist_ok=True)
+
+                        # Delayed import to avoid circular import issue
+                        from getai.api import download_dataset
+
+                        # Call download_dataset from getai.api
+                        await download_dataset(
+                            identifier=selected_dataset["id"],
+                            hf_token=self.config["hf_token"],
+                            max_connections=self.config["max_connections"],
+                            output_dir=output_folder,
                         )
                         break
                     else:
-                        logger.info("You are already at the main search results.")
-                elif user_input.isdigit() and 1 <= int(user_input) <= len(
-                    self.get_current_datasets(current_page)
-                ):
-                    selected_dataset = self.get_current_datasets(current_page)[
-                        int(user_input) - 1
-                    ]
-                    output_folder = (
-                        Path(self.config["output_dir"]) / selected_dataset["id"]
-                    )
-                    output_folder.mkdir(parents=True, exist_ok=True)
+                        logger.error("Invalid input. Please try again.")
 
-                    # Delayed import to avoid circular import issue
-                    from getai.api import download_dataset
-
-                    # Call download_dataset from getai.api
-                    await download_dataset(
-                        identifier=selected_dataset["id"],
-                        hf_token=self.config["hf_token"],
-                        max_connections=self.config["max_connections"],
-                        output_dir=output_folder,
-                    )
-                    break
-                else:
-                    logger.error("Invalid input. Please try again.")
-
-            await self.handle_dataset_user_choice()
+                await self.handle_dataset_user_choice()
 
     async def display_current_dataset_page(self, current_page, total_pages):
         """Display the current page of dataset search results."""

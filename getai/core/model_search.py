@@ -4,21 +4,14 @@ import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import (
-    Optional,
-    Dict,
-    List,
-    Tuple,
-    Set,
-    Any,  # pylint: disable=unused-import noqa: F401
-)
+from typing import Optional, Dict, List, Tuple, Set, Any  # noqa
 from aiohttp import ClientSession
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 
-# Import API functions
-from getai import download_model
-from getai.utils import interactive_branch_selection, convert_to_bytes
+
+from getai import api
+
 
 BASE_URL = "https://huggingface.co"
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
@@ -39,7 +32,7 @@ class AsyncModelSearch:
         session: ClientSession,
         max_connections: int = 10,
         hf_token: Optional[str] = None,
-        **kwargs: Any,  # Accepting additional keyword arguments for flexibility
+        **kwargs: Any,
     ):
         """Initialize AsyncModelSearch with query and session."""
         self.query = query
@@ -190,7 +183,7 @@ class AsyncModelSearch:
                 ]
                 branches = await self.get_model_branches(selected_model["id"])
                 selected_branch = await self.select_branch_interactive(branches)
-                await download_model(
+                await api.download_model(
                     identifier=selected_model["id"],
                     branch=selected_branch,
                     hf_token=self.token,
@@ -385,6 +378,8 @@ class AsyncModelSearch:
         branch_arg: Optional[str],
     ) -> str:
         """Select a branch based on user input or default to main."""
+        from getai.core import interactive_branch_selection
+
         if branch_arg:
             if isinstance(branch_arg, str):
                 return branch_arg if branch_arg in branches else "main"
@@ -451,6 +446,8 @@ class AsyncModelSearch:
         self, model: str, quiet: bool = False
     ) -> Dict[str, int]:
         """Get file sizes for all branches of a model."""
+        from getai.core import convert_to_bytes
+
         if not quiet:
             self.logger.debug("Fetching file sizes for %s...", model)
         branches = await self.get_model_branches(model)

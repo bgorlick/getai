@@ -1,11 +1,11 @@
-# __main__.py
+# getai/__main__.py
 import asyncio
-from getai.main import main
+from getai.cli import cli_main
 
 
 def run():
-    asyncio.run(main())
+    asyncio.run(cli_main())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     run()
