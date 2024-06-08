@@ -1,6 +1,4 @@
-"""
-getai/core/__init__.py - Initialization module for the getai.core package.
-"""
+# getai/core/__init__.py - Initialization module for the getai.core package.
 
 from getai.core.dataset_downloader import AsyncDatasetDownloader
 from getai.core.dataset_search import AsyncDatasetSearch

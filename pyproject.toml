@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "getai"
-version = "0.0.98"
+version = "0.0.982"
 description = "GetAI - An asynchronous AI search and download tool for AI models, datasets, and tools. Designed to streamline the process of downloading machine learning models, datasets, and more."
 authors = ["Ben Gorlick <ben@unifiedlearning.ai>"]
 license = "MIT - with attribution"
@@ -19,7 +19,7 @@ tenacity = "^8.0.1"
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
 pytest-asyncio = "^0.17.0"
-pytest-cov = "^3.0.0" # this is for coverage
+pytest-cov = "^3.0.0" 
 
 [build-system]
 requires = ["poetry-core"]

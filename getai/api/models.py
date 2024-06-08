@@ -1,7 +1,5 @@
 # getai/api/models.py - GetAI API methods for searching and downloading models.
 
-# getai/api/models.py - This module contains the API methods for searching and downloading models.
-
 from functools import lru_cache
 from typing import Optional
 from pathlib import Path
@@ -25,21 +23,15 @@ class ModelAPI:
     ):
         from getai.api.utils import get_hf_token
         from getai.core.model_search import AsyncModelSearch
-        from getai.core.session_manager import SessionManager
 
         hf_token = hf_token or get_hf_token()
 
-        async with SessionManager(
-            max_connections=max_connections, hf_token=hf_token
-        ) as manager:
-            session = await manager.get_session()
-            searcher = AsyncModelSearch(
-                query=query,
-                max_connections=max_connections,
-                session=session,
-                hf_token=hf_token,
-            )
-            await searcher.search_models(query, **kwargs)
+        searcher = AsyncModelSearch(
+            query=query,
+            max_connections=max_connections,
+            hf_token=hf_token,
+        )
+        await searcher.search_models(query, **kwargs)
 
     @staticmethod
     async def download_model(

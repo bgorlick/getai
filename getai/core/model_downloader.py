@@ -1,4 +1,4 @@
-""" getai/core/model_downloader.py: Async Downloads models from the Hugging Face Hub."""
+# getai/core/model_downloader.py: Async Downloads models from the Hugging Face Hub.
 
 import base64
 import datetime
@@ -10,7 +10,6 @@ from typing import Optional, Dict, List, Tuple
 import asyncio
 from aiofiles import open as aio_open
 import aiofiles
-from aiohttp import ClientSession
 
 
 BASE_URL = "https://huggingface.co"
@@ -50,7 +49,6 @@ class AsyncModelDownloader:
         """Download and optionally verify a model."""
         print(f"Downloading model '{model_id}' from branch '{branch}'")
 
-        # Import SessionManager inside the function to avoid circular import
         from getai.core import SessionManager
 
         async with SessionManager(
@@ -70,12 +68,12 @@ class AsyncModelDownloader:
             )
             if check:
                 await self.check_model_files(
-                    session, model_id, branch, links, dict(sha256), output_folder
+                    model_id, branch, links, dict(sha256), output_folder
                 )
 
     async def get_download_links_from_huggingface(
         self,
-        session: ClientSession,
+        session,
         model: str,
         branch: str,
         text_only: bool = False,
@@ -210,7 +208,7 @@ class AsyncModelDownloader:
 
     async def download_model_files(
         self,
-        session: ClientSession,
+        session,
         model: str,
         branch: str,
         links: List[str],
@@ -254,7 +252,7 @@ class AsyncModelDownloader:
 
     async def _download_model_file(
         self,
-        session: ClientSession,
+        session,
         url: str,
         output_folder: Path,
         file_hash: Optional[str],
@@ -295,7 +293,6 @@ class AsyncModelDownloader:
 
     async def check_model_files(
         self,
-        session: ClientSession,
         model: str,
         branch: str,
         links: List[str],

@@ -3,24 +3,26 @@ from pathlib import Path
 import asyncio
 import logging
 from aiohttp import ClientError
-
-from getai.api import search_datasets, download_dataset, search_models, download_model
-
+import getai.api as api
 from getai.cli.utils import CLIUtils
-from getai.core.dataset_search import AsyncDatasetSearch
-
 
 # Configure logging
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+DEFAULT_OUTPUT_DIR = Path.home() / ".getai" / "models"
+DEFAULT_MAX_CONNECTIONS = 5
+DEFAULT_BRANCH = "main"
 
 
 def add_common_arguments(parser: argparse.ArgumentParser):
     """Add common arguments for dataset and model parsers."""
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
     parser.add_argument(
-        "--max-connections", type=int, default=5, help="Max connections"
+        "--max-connections",
+        type=int,
+        default=DEFAULT_MAX_CONNECTIONS,
+        help="Max connections",
     )
 
 
@@ -38,7 +40,7 @@ def define_subparsers(parser: argparse.ArgumentParser):
 
     # Search datasets
     search_datasets_parser = search_subparsers.add_parser(
-        "datasets", help="Search for datasets"
+        "datasets", aliases=["dataset"], help="Search for datasets"
     )
     search_datasets_parser.add_argument(
         "query", type=str, help="Search query for datasets"
@@ -57,7 +59,7 @@ def define_subparsers(parser: argparse.ArgumentParser):
 
     # Search models
     search_models_parser = search_subparsers.add_parser(
-        "models", help="Search for models"
+        "models", aliases=["model"], help="Search for models"
     )
     search_models_parser.add_argument("query", type=str, help="Search query for models")
     add_common_arguments(search_models_parser)
@@ -72,7 +74,7 @@ def define_subparsers(parser: argparse.ArgumentParser):
 
     # Download dataset
     download_dataset_parser = download_subparsers.add_parser(
-        "dataset", help="Download a dataset"
+        "dataset", aliases=["datasets"], help="Download a dataset"
     )
     download_dataset_parser.add_argument(
         "identifier", type=str, help="Dataset identifier"
@@ -87,11 +89,11 @@ def define_subparsers(parser: argparse.ArgumentParser):
 
     # Download model
     download_model_parser = download_subparsers.add_parser(
-        "model", help="Download a model"
+        "model", aliases=["models"], help="Download a model"
     )
     download_model_parser.add_argument("identifier", type=str, help="Model identifier")
     download_model_parser.add_argument(
-        "--branch", type=str, default="main", help="Model branch"
+        "--branch", type=str, default=DEFAULT_BRANCH, help="Model branch"
     )
     download_model_parser.add_argument(
         "--clean", action="store_true", help="Start from scratch"
@@ -100,6 +102,34 @@ def define_subparsers(parser: argparse.ArgumentParser):
         "--check", action="store_true", help="Check files"
     )
     add_common_arguments(download_model_parser)
+
+    # Alias model/models to download
+    download_parser_model = subparsers.add_parser(
+        "model", aliases=["models"], help="Download a model"
+    )
+    download_parser_model.add_argument("identifier", type=str, help="Model identifier")
+    download_parser_model.add_argument(
+        "--branch", type=str, default=DEFAULT_BRANCH, help="Model branch"
+    )
+    download_parser_model.add_argument(
+        "--clean", action="store_true", help="Start from scratch"
+    )
+    download_parser_model.add_argument(
+        "--check", action="store_true", help="Check files"
+    )
+    download_parser_model.set_defaults(mode="download", download_mode="model")
+
+
+def set_defaults(args):
+    """Set default values for output_dir, max_connections, and branch if not provided."""
+    if not hasattr(args, "max_connections") or args.max_connections is None:
+        args.max_connections = DEFAULT_MAX_CONNECTIONS
+
+    if not hasattr(args, "output_dir") or args.output_dir is None:
+        args.output_dir = DEFAULT_OUTPUT_DIR
+
+    if not hasattr(args, "branch") or args.branch is None:
+        args.branch = DEFAULT_BRANCH
 
 
 async def main():
@@ -125,20 +155,35 @@ async def main():
         parser.print_help()
         return
 
+    # Set default values for max_connections, output_dir, and branch
+    set_defaults(args)
+
+    # Log final values of the arguments
+    logger.info(
+        "Final arguments: mode=%s, search_mode=%s, download_mode=%s, identifier=%s, branch=%s, output_dir=%s, max_connections=%s, hf_token=%s",
+        args.mode,
+        getattr(args, "search_mode", None),
+        getattr(args, "download_mode", None),
+        getattr(args, "identifier", None),
+        args.branch,
+        args.output_dir,
+        args.max_connections,
+        hf_token,
+    )
+
     try:
         if args.mode == "search":
-            if args.search_mode == "datasets":
+            if args.search_mode in ["datasets", "dataset"]:
                 logger.info("Searching datasets with query: %s", args.query)
-                search_instance = AsyncDatasetSearch(
+                await api.search_datasets(
                     query=args.query,
-                    output_dir=args.output_dir or Path.home() / ".getai" / "datasets",
-                    max_connections=args.max_connections,
                     hf_token=hf_token,
+                    max_connections=args.max_connections,
+                    output_dir=args.output_dir,
                 )
-                await search_instance.display_dataset_search_results()
-            elif args.search_mode == "models":
+            elif args.search_mode in ["models", "model"]:
                 logger.info("Searching models with query: %s", args.query)
-                await search_models(
+                await api.search_models(
                     query=args.query,
                     hf_token=hf_token,
                     max_connections=args.max_connections,
@@ -150,25 +195,26 @@ async def main():
                 parser.print_help()
 
         elif args.mode == "download":
-            if args.download_mode == "dataset":
+            if args.download_mode in ["dataset", "datasets"]:
                 logger.info("Downloading dataset: %s", args.identifier)
-                await download_dataset(
+                await api.download_dataset(
                     identifier=args.identifier,
                     revision=args.revision,
                     full=args.full,
-                    output_dir=args.output_dir,
-                    max_connections=args.max_connections,
-                )
-            elif args.download_mode == "model":
-                logger.info("Downloading model: %s", args.identifier)
-                await download_model(
-                    identifier=args.identifier,
-                    branch=args.branch,
                     hf_token=hf_token,
                     max_connections=args.max_connections,
                     output_dir=args.output_dir,
+                )
+            elif args.download_mode in ["model", "models"]:
+                logger.info("Downloading model: %s", args.identifier)
+                await api.download_model(
+                    identifier=args.identifier,
+                    branch=args.branch,
                     clean=args.clean,
                     check=args.check,
+                    hf_token=hf_token,
+                    max_connections=args.max_connections,
+                    output_dir=args.output_dir,
                 )
             else:
                 logger.error(

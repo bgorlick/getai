@@ -1,17 +1,12 @@
-""" model_search.py - GetAI model search and download functions. """
-
 import asyncio
 import logging
 import re
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple, Set, Any  # noqa
-from aiohttp import ClientSession
+from typing import Optional, Dict, List, Tuple, Set, Any
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
-
-
+from getai.core.session_manager import SessionManager
 from getai import api
-
 
 BASE_URL = "https://huggingface.co"
 logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
@@ -29,27 +24,27 @@ class AsyncModelSearch:
     def __init__(
         self,
         query: str,
-        session: ClientSession,
         max_connections: int = 10,
         hf_token: Optional[str] = None,
         **kwargs: Any,
     ):
-        """Initialize AsyncModelSearch with query and session."""
+        """Initialize AsyncModelSearch with query."""
         self.query = query
         self.page_size = 20
         self.filtered_models: List[Dict] = []
         self.total_models: int = 0
         self.branch_sizes: Dict[str, Dict[str, int]] = {}
+        self.model_branch_info: Dict[str, Dict[str, Any]] = {}
         self.filtered_model_ids: Set[str] = set()
         self.main_search_models: List[Dict] = []
         self.search_history: List[Tuple[List[Dict], int]] = []
         self.prefetched_pages: Set[int] = set()
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
+        self.filter_flag = False
 
         self.token = hf_token
         self.max_connections = max_connections
-        self.session = session
         self.semaphore = asyncio.Semaphore(self.max_connections)
 
     async def search_models(
@@ -65,45 +60,46 @@ class AsyncModelSearch:
         if query in search_cache:
             models = search_cache[query]
         else:
-            if self.session is None:
-                self.logger.error("Session is not initialized.")
-                return
-
-            url = f"{BASE_URL}/api/models"
-            params = {
-                "search": query,
-                "sort": "downloads",
-                "direction": "-1",
-                "limit": 1000,
-                "full": "true",
-            }
-            retry_count = 0
-            models = []
-            while retry_count < self.max_connections:
-                async with self.session.get(url, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        models = data
-                        search_cache[query] = models
-                        break
-                    elif response.status == 503:
-                        retry_count += 1
-                        if retry_count < self.max_connections:
-                            delay = 2**retry_count
-                            self.logger.warning(
-                                "Received 503 error. Retrying in %s seconds...", delay
-                            )
-                            await asyncio.sleep(delay)
+            async with SessionManager(
+                max_connections=self.max_connections, hf_token=self.token
+            ) as manager:
+                session = await manager.get_session()
+                url = f"{BASE_URL}/api/models"
+                params = {
+                    "search": query,
+                    "sort": "downloads",
+                    "direction": "-1",
+                    "limit": 1000,
+                    "full": "true",
+                }
+                retry_count = 0
+                models = []
+                while retry_count < self.max_connections:
+                    async with session.get(url, params=params) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            models = data
+                            search_cache[query] = models
+                            break
+                        elif response.status == 503:
+                            retry_count += 1
+                            if retry_count < self.max_connections:
+                                delay = 2**retry_count
+                                self.logger.warning(
+                                    "Received 503 error. Retrying in %s seconds...",
+                                    delay,
+                                )
+                                await asyncio.sleep(delay)
+                            else:
+                                self.logger.error(
+                                    "Max retries exceeded. Skipping the request."
+                                )
+                                return
                         else:
                             self.logger.error(
-                                "Max retries exceeded. Skipping the request."
+                                "Error searching for models: HTTP %s", response.status
                             )
                             return
-                    else:
-                        self.logger.error(
-                            "Error searching for models: HTTP %s", response.status
-                        )
-                        return
 
         self.total_models = len(models)
         self.filtered_models = self.filter_models(
@@ -164,10 +160,8 @@ class AsyncModelSearch:
                 self.search_history[-1] = (self.filtered_models.copy(), current_page)
             elif user_input.lower() == "f":
                 await self.filter_search_results()
-                break
             elif user_input.lower() == "s":
                 await self.sort_search_results()
-                break
             elif user_input.lower() == "r":
                 if len(self.search_history) > 1:
                     self.search_history.pop()
@@ -175,6 +169,10 @@ class AsyncModelSearch:
                     self.total_models = len(self.filtered_models)
                 else:
                     self.logger.info("You are already at the main search results.")
+            elif user_input.lower() == "none":
+                self.filtered_models = self.main_search_models
+                self.filter_flag = False
+                await self.display_search_results()
             elif user_input.isdigit() and 1 <= int(user_input) <= len(
                 self.get_current_models(current_page)
             ):
@@ -182,7 +180,9 @@ class AsyncModelSearch:
                     int(user_input) - 1
                 ]
                 branches = await self.get_model_branches(selected_model["id"])
-                selected_branch = await self.select_branch_interactive(branches)
+                selected_branch = await self.select_branch_interactive(
+                    branches, selected_model["id"]
+                )
                 await api.download_model(
                     identifier=selected_model["id"],
                     branch=selected_branch,
@@ -219,12 +219,19 @@ class AsyncModelSearch:
                     last_modified = last_modified_dt.strftime("%Y-%m-%d %H:%M")
                 except ValueError:
                     last_modified = "Invalid date format"
+
+            branches_info = ""
+            if self.model_branch_info.get(model_id, {}).get("has_branches", False):
+                branches_count = len(self.model_branch_info[model_id]["branches"])
+                branches_info = f" | Branches: {branches_count}"
+
             print(
                 f"{i}. \033[94m{model_name}\033[0m by \033[94m{author}\033[0m "
-                f"(\033[96m{model_id}\033[0m) (\033[93mSize: {size_str}\033[0m) (\033[97mLast updated: {last_modified}\033[0m)"
+                f"(\033[96m{model_id}\033[0m) (\033[93mSize: {size_str}\033[0m{branches_info}) "
+                f"(\033[97mLast updated: {last_modified}\033[0m)"
             )
         print(
-            "Enter 'n' for next page, 'p' for previous page, 'f' to filter, 's' to sort, 'r' for previous results, or the model # to download."
+            "Enter 'n' for next page, 'p' for previous page, 'f' to filter, 's' to sort, 'r' for previous results, 'none' to show all results, or the model # to download."
         )
 
     async def get_model_size_str(self, model_id: str) -> str:
@@ -255,6 +262,10 @@ class AsyncModelSearch:
 
         for model, sizes in zip(models_to_prefetch, results):
             self.branch_sizes[model["id"]] = sizes
+            self.model_branch_info[model["id"]] = {
+                "has_branches": len(sizes) > 1,
+                "branches": list(sizes.keys()),
+            }
             self.update_display_with_new_size(model["id"])
 
         self.prefetched_pages.update(range(start_page, end_page))
@@ -293,6 +304,10 @@ class AsyncModelSearch:
                         models_not_prefetched, prefetched_branch_sizes
                     ):
                         self.branch_sizes[model["id"]] = sizes
+                        self.model_branch_info[model["id"]] = {
+                            "has_branches": len(sizes) > 1,
+                            "branches": list(sizes.keys()),
+                        }
 
                 self.prefetched_pages.update(pages_not_cached)
 
@@ -301,7 +316,7 @@ class AsyncModelSearch:
         current_models = self.get_current_models(current_page)
         model_completer = WordCompleter(
             [str(i) for i in range(1, len(current_models) + 1)]
-            + ["n", "p", "f", "s", "r"]
+            + ["n", "p", "f", "s", "r", "none"]
         )
         prompt_session: PromptSession = PromptSession(completer=model_completer)
         return await prompt_session.prompt_async("Enter your choice: ")
@@ -314,25 +329,33 @@ class AsyncModelSearch:
 
     async def filter_search_results(self):
         """Filter search results based on user input."""
-        print("Enter the filter keyword:")
+        print(
+            "Enter a filter query to filter the results (or type 'none' to show all results):"
+        )
         filter_keyword = await asyncio.get_event_loop().run_in_executor(
             None, input, "> "
         )
-        self.filtered_model_ids = {
-            model["id"]
-            for model in self.filtered_models
-            if filter_keyword.lower() in model["id"].lower()
-        }
-        self.filtered_models = [
-            model
-            for model in self.filtered_models
-            if model["id"] in self.filtered_model_ids
-        ]
+        if filter_keyword.lower() == "none":
+            self.filtered_models = self.main_search_models
+            self.filter_flag = False
+        else:
+            self.filtered_model_ids = {
+                model["id"]
+                for model in self.filtered_models
+                if filter_keyword.lower() in model["id"].lower()
+            }
+            self.filtered_models = [
+                model
+                for model in self.filtered_models
+                if model["id"] in self.filtered_model_ids
+            ]
+            self.filter_flag = True
         self.total_models = len(self.filtered_models)
         self.search_history.append((self.filtered_models.copy(), 1))
         self.prefetched_pages.clear()
         if not self.filtered_models:
             print(f"No models found for the filter keyword '{filter_keyword}'.")
+        await self.display_search_results()
 
     async def sort_search_results(self):
         """Sort search results based on user input criteria."""
@@ -352,13 +375,18 @@ class AsyncModelSearch:
         print(
             f"Search results sorted by '{sort_criteria}' in {'descending' if reverse else 'ascending'} order."
         )
+        await self.display_search_results()
 
-    async def select_branch_interactive(self, branches: List[str]) -> str:
+    async def select_branch_interactive(
+        self, branches: List[str], model_id: str
+    ) -> str:
         """Select a branch interactively from the list."""
         if len(branches) > 1:
             print("Available branches:")
             for i, branch in enumerate(branches, start=1):
-                print(f"{i}. \033[96m{branch}\033[0m")
+                size = self.branch_sizes.get(model_id, {}).get(branch, 0)
+                size_gb = size / (1024**3) if isinstance(size, int) else 0.0
+                print(f"{i}. \033[96m{branch}\033[0m (Size: {size_gb:.2f} GB)")
             branch_completer = WordCompleter(
                 [str(i) for i in range(1, len(branches) + 1)]
             )
@@ -393,7 +421,7 @@ class AsyncModelSearch:
 
                 branches_info = []
                 for branch in branches:
-                    size = self.branch_sizes.get(branch, 0)
+                    size = self.branch_sizes.get(branch, {}).get(branch, 0)
                     if isinstance(size, int):
                         size_gb = size / (1024**3)
                     else:
@@ -408,25 +436,25 @@ class AsyncModelSearch:
 
     async def get_model_branches(self, model: str) -> List[str]:
         """Get a list of branches for the given model."""
-        if self.session is None:
-            self.logger.error("Session is not initialized.")
-            return []
-
-        url = f"{BASE_URL}/{model}/tree/main"
-        async with self.session.get(url) as response:
-            if response.status == 200:
-                text = await response.text()
-                pattern = r"refs/heads/([^&]+)"
-                branch_matches = re.findall(pattern, text)
-                return list(set(branch_matches))
-            else:
-                self.logger.error("Error fetching file tree: HTTP %s", response.status)
+        async with SessionManager(
+            max_connections=self.max_connections, hf_token=self.token
+        ) as manager:
+            session = await manager.get_session()
+            url = f"{BASE_URL}/{model}/tree/main"
+            async with session.get(url) as response:
+                if response.status == 200:
+                    text = await response.text()
+                    pattern = r"refs/heads/([^&]+)"
+                    branch_matches = re.findall(pattern, text)
+                    return list(set(branch_matches))
+                else:
+                    self.logger.error(
+                        "Error fetching file tree: HTTP %s", response.status
+                    )
         return []
 
     def update_display_with_new_size(self, model_id: str):
         """Update the display with new size information."""
-        # can be used for debugging
-        # print(f"Updated size for model {model_id}: {self.branch_sizes[model_id]}")
         pass
 
     async def get_branch_file_sizes_for_models(
@@ -452,11 +480,14 @@ class AsyncModelSearch:
             self.logger.debug("Fetching file sizes for %s...", model)
         branches = await self.get_model_branches(model)
         branch_sizes: Dict[str, int] = {}
-        if self.session:
+        async with SessionManager(
+            max_connections=self.max_connections, hf_token=self.token
+        ) as manager:
+            session = await manager.get_session()
             for branch in branches:
                 page_url = f"{BASE_URL}/{model}/tree/{branch}"
                 try:
-                    async with self.session.get(page_url) as response:
+                    async with session.get(page_url) as response:
                         if response.status == 200:
                             text = await response.text()
                             file_sizes = file_size_pattern.findall(text)
