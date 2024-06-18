@@ -9,7 +9,7 @@ from getai.core.session_manager import SessionManager
 from getai import api
 
 BASE_URL = "https://huggingface.co"
-logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.ERROR)
 
 file_size_pattern = re.compile(
     r'<a class="[^"]*" title="Download file"[^>]*>([\d.]+ [GMK]B)'
@@ -40,7 +40,7 @@ class AsyncModelSearch:
         self.search_history: List[Tuple[List[Dict], int]] = []
         self.prefetched_pages: Set[int] = set()
         self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.NOTSET)
         self.filter_flag = False
 
         self.token = hf_token
@@ -173,6 +173,8 @@ class AsyncModelSearch:
                 self.filtered_models = self.main_search_models
                 self.filter_flag = False
                 await self.display_search_results()
+            elif user_input.lower() == "q":
+                break
             elif user_input.isdigit() and 1 <= int(user_input) <= len(
                 self.get_current_models(current_page)
             ):
@@ -224,14 +226,21 @@ class AsyncModelSearch:
             if self.model_branch_info.get(model_id, {}).get("has_branches", False):
                 branches_count = len(self.model_branch_info[model_id]["branches"])
                 branches_info = f" | Branches: {branches_count}"
+            # ascii grey
+            ascii_grey_bold = "\033[90m\033[1m"
+            ascii_bold_green = "\033[92m\033[1m"
+            ascii_bold_magenta = "\033[95m\033[1m"
+            abwhite = "\033[97m\033[1m"
+            qrst = "\033[0m"
 
             print(
-                f"{i}. \033[94m{model_name}\033[0m by \033[94m{author}\033[0m "
-                f"(\033[96m{model_id}\033[0m) (\033[93mSize: {size_str}\033[0m{branches_info}) "
-                f"(\033[97mLast updated: {last_modified}\033[0m)"
+                f"{i}. \033[96m{model_name}\033[0m by \033[94m{author}\033[0m | "
+                f"(\033[93mSize: {size_str}\033[0m{branches_info}) "
+                f"(\033[97m{last_modified}\033[0m)\n"
+                f"{ascii_grey_bold}{'-' * 100}\033[0m"
             )
         print(
-            "Enter 'n' for next page, 'p' for previous page, 'f' to filter, 's' to sort, 'r' for previous results, 'none' to show all results, or the model # to download."
+            f"{ascii_bold_green}getai search commands{ascii_bold_magenta}> {abwhite} #{qrst} download model, {abwhite}'n'{qrst} (next), {abwhite}'p'{qrst} (prev), {abwhite}'f'{qrst} (filter), {abwhite}'s'{qrst} (sort), {abwhite}'r'{qrst} (results), {abwhite}'none'{qrst} (all), {abwhite} 'q'{qrst} to quit.\033[0m"
         )
 
     async def get_model_size_str(self, model_id: str) -> str:

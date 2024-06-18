@@ -13,7 +13,7 @@ import aiofiles
 
 
 BASE_URL = "https://huggingface.co"
-logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(asctime)s - %(message)s", level=logging.ERROR)
 
 file_size_pattern = re.compile(
     r'<a class="[^"]*" title="Download file"[^>]*>([\d.]+ [GMK]B)'

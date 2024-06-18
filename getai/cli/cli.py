@@ -7,7 +7,7 @@ import getai.api as api
 from getai.cli.utils import CLIUtils
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_DIR = Path.home() / ".getai" / "models"
@@ -141,7 +141,7 @@ async def main():
     )
     args = parser.parse_args()
 
-    logger.info("Parsed arguments: %s", args)
+    logger.debug("Parsed arguments: %s", args)
 
     if args.hf_login:
         logger.info("Logging in to Hugging Face CLI")
@@ -159,7 +159,7 @@ async def main():
     set_defaults(args)
 
     # Log final values of the arguments
-    logger.info(
+    logger.debug(
         "Final arguments: mode=%s, search_mode=%s, download_mode=%s, identifier=%s, branch=%s, output_dir=%s, max_connections=%s, hf_token=%s",
         args.mode,
         getattr(args, "search_mode", None),
